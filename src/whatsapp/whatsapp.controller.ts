@@ -9,6 +9,8 @@ import {
   UploadedFile,
   BadRequestException,
   Res,
+  ParseFilePipe,
+  MaxFileSizeValidator,
 } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
 import {
@@ -22,10 +24,42 @@ import { EnviarMensajeDto } from './dto/send-message.dto';
 import { EnviarImagenDto } from './dto/send-image.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import express from 'express';
+import { EnviarDocumentoDto } from './dto/send-document.dto';
 @ApiTags('WhatsApp Gateway')
 @Controller('whatsapp')
 export class WhatsappController {
-  constructor(private readonly whatsappService: WhatsappService) {}
+  constructor(private readonly whatsappService: WhatsappService) { }
+
+  // 1. GET http://localhost:3000/api/whatsapp/connect (Muestra el QR en el navegador)
+  @Get('connect/view')
+  @ApiOperation({
+    summary: 'Visualizar el Código QR',
+    description:
+      'Renderiza el código QR actual de Baileys para vincular tu dispositivo móvil.',
+  })
+  async renderQrPagev2(@Res() res: express.Response) {
+    const qrImage = await this.whatsappService.obtenerQrHtml();
+
+    if (!qrImage) {
+      return res.send(`
+        <div style="text-align: center; font-family: sans-serif; margin-top: 50px;">
+            <h2>✅ WhatsApp está conectado o el código se está generando...</h2>
+        </div>
+      `);
+    }
+
+    return res.send(`
+      <html lang="es">
+      <body style="font-family: sans-serif; text-align: center; background-color: #f0f2f5; padding-top: 50px;">
+          <div style="background: white; display: inline-block; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+              <h1 style="color: #128C7E;">Vincular NestJS API</h1>
+              <img src="${qrImage}" style="width: 300px; height: 300px;"/>
+          </div>
+      </body>
+      </html>
+    `);
+  }
+
 
   @Get('connect')
   @ApiOperation({
@@ -58,6 +92,7 @@ export class WhatsappController {
   })
   @ApiBody({ type: EnviarMensajeDto })
   async sendMessage(@Body() body: EnviarMensajeDto) {
+    body.phone = body.code + body.phone;
     const result = await this.whatsappService.enviarMensajeTexto(
       body.phone,
       body.message,
@@ -118,7 +153,7 @@ export class WhatsappController {
         'Es obligatorio subir un archivo de imagen.',
       );
     }
-
+    body.phone = body.code + body.phone;
     const result = await this.whatsappService.enviarImagenDesdeBuffer(
       body.phone,
       file.buffer,
@@ -132,6 +167,69 @@ export class WhatsappController {
       data: result,
     };
   }
+
+
+  // <-- Importa el nuevo DTO
+
+  // ... dentro de tu WhatsappController ...
+
+  @Post('send-document')
+  @HttpCode(HttpStatus.OK)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Enviar cualquier tipo de documento', description: 'Sube un archivo (PDF, DOCX, ZIP, etc.) y envíalo por WhatsApp.' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        phone: { type: 'string', example: '59171234567', description: 'Número de destino.' },
+        fileName: { type: 'string', example: 'Factura_Mayo.pdf', description: 'Nombre opcional con el que se guardará el archivo.' },
+        file: { type: 'string', format: 'binary', description: 'Selecciona el documento a enviar' },
+      },
+      required: ['phone', 'file'],
+    },
+  })
+  @UseInterceptors(FileInterceptor('file', {
+    limits: {
+      fileSize: 15 * 1024 * 1024, // <-- Límite de 15 MB para documentos
+    }
+  }))
+  async sendDocument(
+    @Body() body: EnviarDocumentoDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          // Validamos el tamaño de manera estricta (Ej: 15 MB)
+          new MaxFileSizeValidator({
+            maxSize: 15 * 1024 * 1024,
+            message: 'El archivo es demasiado pesado. El límite máximo permitido es de 15 MB.'
+          }),
+        ],
+      }),
+    ) file: any,
+  ) {
+    body.phone = body.code + body.phone;
+    console.log(`El archivo pesa exactamente: ${file.size} bytes`);
+    if (!file) {
+      throw new BadRequestException('Es obligatorio adjuntar un archivo.');
+    }
+
+    // Enviamos el buffer, el tipo MIME original y el nombre del archivo
+    const result = await this.whatsappService.enviarDocumentoDesdeBuffer(
+      body.phone,
+      file.buffer,
+      file.mimetype,
+      body.fileName || file.originalname // Si el usuario no define un nombre, usamos el nombre real del archivo subido
+    );
+
+    return {
+      success: true,
+      message: 'Documento enviado con éxito',
+      data: result
+    };
+  }
+
+
+
   // 2. GET http://localhost:3000/api/whatsapp/view (Muestra el formulario visual de envío)
   @Get('view')
   renderSendPage(@Res() res: express.Response) {
@@ -187,7 +285,7 @@ export class WhatsappController {
                       const response = await fetch('/api/whatsapp/send', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ phone: fullPhone, message })
+                          body: JSON.stringify({ code: countryCode, phone: localPhone, message })
                       });
                       const data = await response.json();
                       if (response.ok) {

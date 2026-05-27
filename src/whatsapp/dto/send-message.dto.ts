@@ -4,7 +4,16 @@ import { IsNotEmpty, IsString, Length, Matches } from 'class-validator';
 
 export class EnviarMensajeDto {
   @ApiProperty({
-    example: '59171234567',
+    example: '591',
+    description: 'Código de país, solo dígitos numéricos.'
+  })
+  @IsNotEmpty({ message: 'El código de pais es obligatorio.' })
+  @IsString({ message: 'El código debe ser texto.' })
+  @Length(2, 3, { message: 'El código de pais debe tener entre 2 y 3 dígitos.' })
+  @Matches(/^[0-9]+$/, { message: 'El código de pais solo debe contener números.' })
+  code: string;
+  @ApiProperty({
+    example: '75818731',
     description: 'Número de teléfono con código de país, solo dígitos numéricos.'
   })
   @IsNotEmpty({ message: 'El número de teléfono es obligatorio.' })

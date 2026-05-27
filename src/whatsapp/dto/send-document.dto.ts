@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, IsOptional, Length, Matches } from 'class-validator';
 
-export class EnviarImagenDto {
+export class EnviarDocumentoDto {
     @ApiProperty({
         example: '591',
         description: 'Código de país, solo dígitos numéricos.'
@@ -23,6 +23,6 @@ export class EnviarImagenDto {
     phone: string;
 
     @IsOptional()
-    @IsString({ message: 'El pie de foto debe ser texto.' })
-    caption?: string;
+    @IsString({ message: 'El título o nombre personalizado del archivo debe ser texto.' })
+    fileName?: string;
 }

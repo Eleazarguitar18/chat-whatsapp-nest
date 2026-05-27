@@ -115,4 +115,23 @@ export class WhatsappService implements OnModuleInit {
       jpegThumbnail: thumbnailBase64, // Si falló Jimp, va undefined y no rompe el flujo principal
     });
   }
+
+
+  // ... envio de documentos ...
+
+  async enviarDocumentoDesdeBuffer(phone: string, fileBuffer: Buffer, mimeType: string, fileName: string) {
+    if (!this.sock) {
+      throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+    }
+
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const jid = `${cleanPhone}@s.whatsapp.net`;
+
+    // Disparamos el mensaje indicando que es un documento
+    return await this.sock.sendMessage(jid, {
+      document: fileBuffer,
+      mimetype: mimeType,
+      fileName: fileName, // El nombre con extensión que verá el usuario en su chat (Ej: documento.pdf)
+    });
+  }
 }
