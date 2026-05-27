@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit, ServiceUnavailableException } from '@nestjs/c
 import makeWASocket, { useMultiFileAuthState, DisconnectReason, WASocket } from '@whiskeysockets/baileys';
 import * as QRCodeNode from 'qrcode';
 import pino = require('pino');
-
+import Jimp from 'jimp';
 @Injectable()
 export class WhatsappService implements OnModuleInit {
   private sock: WASocket | null = null;
@@ -68,5 +68,51 @@ export class WhatsappService implements OnModuleInit {
     const jid = `${cleanPhone}@s.whatsapp.net`;
 
     return await this.sock.sendMessage(jid, { text: message });
+  }
+  async enviarImagen(phone: string, imageUrl: string, caption?: string) {
+    if (!this.sock) {
+      throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+    }
+
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const jid = `${cleanPhone}@s.whatsapp.net`;
+
+    // Baileys detecta automáticamente si es una URL web (http/https) o una ruta local
+    return await this.sock.sendMessage(jid, {
+      image: { url: imageUrl },
+      caption: caption || undefined // Pie de foto opcional
+    });
+  }
+  async enviarImagenDesdeBuffer(phone: string, fileBuffer: Buffer, mimeType: string, caption?: string) {
+    if (!this.sock) {
+      throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+    }
+
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const jid = `${cleanPhone}@s.whatsapp.net`;
+
+    let thumbnailBase64: string | undefined;
+
+    try {
+      // Leemos el buffer original con Jimp
+      const image: any = await Jimp.read(fileBuffer);
+
+      // Redimensionamos a un tamaño pequeño de miniatura (ej: ancho 200px, alto automático)
+      image.resize({ w: 200 });
+
+      // Obtenemos el buffer comprimido en formato JPEG
+      const thumbnailBuffer = await image.getBuffer('image/jpeg');
+      thumbnailBase64 = thumbnailBuffer.toString('base64');
+    } catch (err) {
+      console.error('No se pudo generar el thumbnail, se enviará sin previsualización:', err);
+    }
+
+    // Enviamos a Baileys
+    return await this.sock.sendMessage(jid, {
+      image: fileBuffer,
+      mimetype: mimeType,
+      caption: caption || undefined,
+      jpegThumbnail: thumbnailBase64, // Si falló Jimp, va undefined y no rompe el flujo principal
+    });
   }
 }
