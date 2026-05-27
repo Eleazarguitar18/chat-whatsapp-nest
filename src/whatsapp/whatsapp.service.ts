@@ -1,0 +1,72 @@
+import { Injectable, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, WASocket } from '@whiskeysockets/baileys';
+import * as QRCodeNode from 'qrcode';
+import pino = require('pino');
+
+@Injectable()
+export class WhatsappService implements OnModuleInit {
+  private sock: WASocket | null = null;
+  private ultimoQr: string | null = null;
+
+  // Se ejecuta automáticamente al arrancar la aplicación de NestJS
+  async onModuleInit() {
+    await this.conectarWhatsapp();
+  }
+
+  private async conectarWhatsapp() {
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+
+    this.sock = makeWASocket({
+      auth: state,
+      logger: pino({ level: 'silent' }) as any,
+      browser: ['Ubuntu', 'Chrome', '20.0.04'],
+    });
+
+    this.sock.ev.on('creds.update', saveCreds);
+
+    this.sock.ev.on('connection.update', (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        this.ultimoQr = qr;
+        console.log('🔄 [NestJS] Nuevo código QR generado.');
+      }
+
+      if (connection === 'close') {
+        const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+        console.log(`❌ Conexión cerrada (Status: ${statusCode}). ¿Reconectando?: ${shouldReconnect}`);
+
+        if (shouldReconnect) {
+          setTimeout(() => this.conectarWhatsapp(), 5000);
+        } else {
+          this.ultimoQr = null;
+        }
+      }
+
+      if (connection === 'open') {
+        this.ultimoQr = null;
+        console.log('✅ [NestJS] ¡Conexión con WhatsApp establecida con éxito!');
+      }
+    });
+  }
+
+  // Método para obtener el QR en formato Base64 para la vista web
+  async obtenerQrHtml(): Promise<string | null> {
+    if (!this.ultimoQr) return null;
+    return await QRCodeNode.toDataURL(this.ultimoQr);
+  }
+
+  // Método de negocio para enviar mensajes (Inyectable en cualquier parte del sistema)
+  async enviarMensajeTexto(phone: string, message: string) {
+    if (!this.sock) {
+      throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+    }
+
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const jid = `${cleanPhone}@s.whatsapp.net`;
+
+    return await this.sock.sendMessage(jid, { text: message });
+  }
+}
