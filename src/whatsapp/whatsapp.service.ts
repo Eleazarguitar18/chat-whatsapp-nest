@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import makeWASocket, { useMultiFileAuthState, DisconnectReason, WASocket } from '@whiskeysockets/baileys';
 import * as QRCodeNode from 'qrcode';
 import pino = require('pino');
@@ -17,12 +17,17 @@ export class WhatsappService implements OnModuleInit {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
     this.sock = makeWASocket({
-      auth: state,
+      auth: state, // Mantener el estado multifichero de Baileys
       logger: pino({ level: 'silent' }) as any,
       browser: ['Ubuntu', 'Chrome', '20.0.04'],
+      // v7 TIP: Algunas versiones requieren 'syncFullHistory: false' para no colgarse con chats viejos
+      syncFullHistory: false,
     });
 
-    this.sock.ev.on('creds.update', saveCreds);
+    // 🔥 CONFIGURACIÓN COMPATIBLE V7: Forzamos la resolución asíncrona de las credenciales
+    this.sock.ev.on('creds.update', async () => {
+      await saveCreds();
+    });
 
     this.sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -134,4 +139,121 @@ export class WhatsappService implements OnModuleInit {
       fileName: fileName, // El nombre con extensión que verá el usuario en su chat (Ej: documento.pdf)
     });
   }
+  async enviarMensajeAGrupo(groupId: string, mensaje: string) {
+    if (!this.sock) {
+      throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+    }
+
+    const cleanGroupId = groupId.trim();
+
+    try {
+      console.log(`🚀 [v7] Enviando mensaje directo al grupo: ${cleanGroupId}`);
+      // La v7 ya se encarga de todo el cifrado LID de forma nativa aquí adentro
+      return await this.sock.sendMessage(cleanGroupId, { text: mensaje });
+    } catch (error) {
+      console.error('Error crítico al enviar al grupo:', error);
+      throw new InternalServerErrorException(`Error de protocolo Baileys v7: ${error.message}`);
+    }
+  }
+  // async enviarMensajeAGrupo(groupId: string, mensaje: string) {
+  //   if (!this.sock) {
+  //     throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+  //   }
+
+  //   const cleanGroupId = groupId.trim();
+
+  //   try {
+  //     console.log(`🔄 Forzando sincronización de llaves para el grupo: ${cleanGroupId}`);
+
+  //     // CRUCIAL: Esto obliga a Baileys a traer a los miembros del grupo de los servidores de Meta
+  //     // y crea de forma automática las "sessions" de libsignal que te están faltando.
+  //     await this.sock.groupMetadata(cleanGroupId);
+
+  //     // Esperamos un mini delay de 500ms para que libsignal guarde los archivos en disco
+  //     await new Promise(resolve => setTimeout(resolve, 500));
+
+  //     console.log(`🚀 Desplegando mensaje al grupo...`);
+
+  //     // Ahora sí, enviamos el mensaje de forma nativa
+  //     return await this.sock.sendMessage(cleanGroupId, { text: mensaje });
+
+  //   } catch (error) {
+  //     console.error('Error crítico al enviar al grupo:', error);
+  //     throw new InternalServerErrorException(
+  //       `No se pudo enviar el mensaje al grupo. Detalles: ${error.message}`
+  //     );
+  //   }
+  // }
+  // ... dentro de tu WhatsappService (al final de la clase) ...
+  async listarMisGrupos() {
+    if (!this.sock) {
+      throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+    }
+
+    try {
+      const grupos = await this.sock.groupFetchAllParticipating();
+
+      // 👁️ TRUCO DE INSPECCIÓN: Imprimimos en la consola TODO el objeto crudo con lujo de detalles
+      console.log('====== OBJETO CRUDO DE GRUPOS RECIBIDO DE META ======');
+      console.dir(grupos, { depth: null, colors: true });
+      console.log('=====================================================');
+
+      // Devolvemos el mapeo normal para que no rompa tu Swagger
+      return Object.values(grupos).map((grupo: any) => ({
+        id: grupo.id,
+        nombre: grupo.subject,
+      }));
+    } catch (error) {
+      console.error('Error al listar los grupos de WhatsApp:', error);
+      throw new InternalServerErrorException('No se pudieron recuperar los grupos.');
+    }
+  }
+  async obtenerParticipantesPorJid(jid: string) {
+    if (!this.sock) {
+      throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+    }
+
+    try {
+      console.log(`🔍 Buscando participantes en el grupo: ${jid}`);
+
+      // 1. Forzamos la sincronización de metadatos para asegurar que Baileys tenga la lista fresca
+      const metadata = await this.sock.groupMetadata(jid);
+
+      // 2. Mapeamos la lista oficial de participantes que nos devuelve Meta
+      // Nota: En Baileys v6, los participantes ya vienen en el metadata
+      const participantes = metadata.participants.map((p: any) => ({
+        id: p.id,          // jid completo (ej: 5214491234567@s.whatsapp.net)
+        nombre: p.notify,
+        esAdmin: p.admin || false
+      }));
+
+      console.log(`✅ Encontrados ${participantes.length} participantes.`);
+      return participantes;
+
+    } catch (error) {
+      console.error('Error al obtener participantes:', error);
+      throw new InternalServerErrorException(`No se pudo obtener la lista de participantes del grupo ${jid}.`);
+    }
+  }
+  // async listarMisGrupos() {
+  //   if (!this.sock) {
+  //     throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+  //   }
+
+  //   try {
+  //     // Le pedimos a Baileys que traiga todos los grupos que tiene en memoria
+  //     const grupos = await this.sock.groupFetchAllParticipating();
+  //     // console.log(grupos);
+  //     // Mapeamos la respuesta para que solo nos devuelva el nombre y su JID limpio
+  //     const listaGrupos = Object.values(grupos).map((grupo: any) => ({
+  //       id: grupo.id,          // <-- Este es el JID que necesitas (ej: 1203633... @g.us)
+  //       nombre: grupo.subject, // <-- El nombre del grupo en tu celular
+  //     }));
+
+  //     return listaGrupos;
+  //   } catch (error) {
+  //     console.error('Error al listar los grupos de WhatsApp:', error);
+  //     throw new InternalServerErrorException('No se pudieron recuperar los grupos.');
+  //   }
+  // }
 }

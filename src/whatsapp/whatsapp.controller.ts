@@ -228,7 +228,61 @@ export class WhatsappController {
     };
   }
 
+  @Post('send-to-group')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Enviar mensaje de texto exclusivo a un grupo',
+    description: 'Envía un comunicado directamente a un grupo utilizando su JID oficial (@g.us).'
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        groupId: {
+          type: 'string',
+          example: '120363319482736451@g.us',
+          description: 'El JID del grupo capturado desde la consola.'
+        },
+        message: {
+          type: 'string',
+          example: 'Estimados asegurados, este es un comunicado oficial.',
+          description: 'Contenido del mensaje.'
+        },
+      },
+      required: ['groupId', 'message'],
+    },
+  })
+  async sendToGroup(
+    @Body() body: { groupId: string; message: string },
+  ) {
+    // Validamos en la frontera que no vengan vacíos
+    if (!body.groupId || !body.message) {
+      throw new BadRequestException('Los campos groupId y message son obligatorios.');
+    }
 
+    const result = await this.whatsappService.enviarMensajeAGrupo(body.groupId, body.message);
+
+    return {
+      success: true,
+      message: 'Comunicado enviado al grupo con éxito',
+      data: result,
+    };
+  }
+
+  // ... dentro de tu WhatsappController ...
+
+  @Get('list-groups')
+  @ApiOperation({
+    summary: 'Listar todos los grupos del bot',
+    description: 'Devuelve una lista con los nombres y JIDs (@g.us) de todos los grupos donde está el número corporativo.'
+  })
+  async getGroups() {
+    const grupos = await this.whatsappService.listarMisGrupos();
+    return {
+      success: true,
+      data: grupos
+    };
+  }
 
   // 2. GET http://localhost:3000/api/whatsapp/view (Muestra el formulario visual de envío)
   @Get('view')
@@ -306,4 +360,8 @@ export class WhatsappController {
       </html>
     `);
   }
+
+  // ... dentro de tu WhatsappController ...
+
+
 }
