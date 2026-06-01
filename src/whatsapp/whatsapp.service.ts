@@ -27,7 +27,7 @@ export class WhatsappService implements OnModuleInit {
       syncFullHistory: false,
     });
 
-    // 🔥 CONFIGURACIÓN COMPATIBLE V7: Forzamos la resolución asíncrona de las credenciales
+    // CONFIGURACIÓN COMPATIBLE V7: Forzamos la resolución asíncrona de las credenciales
     this.sock.ev.on('creds.update', async () => {
       await saveCreds();
     });
