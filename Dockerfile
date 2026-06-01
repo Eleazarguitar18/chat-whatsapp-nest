@@ -6,8 +6,8 @@ WORKDIR /app
 # Copiar archivos de dependencias
 COPY package*.json ./
 
-# Instalar todas las dependencias (incluyendo las de desarrollo para compilar)
-RUN npm install
+# Agregamos la bandera para evitar el bloqueo de Jimp en la compilación
+RUN npm install --legacy-peer-deps
 
 # Copiar el resto del código del proyecto
 COPY . .
@@ -25,9 +25,9 @@ ENV NODE_ENV=production
 # Copiar solo el package.json y los archivos necesarios
 COPY package*.json ./
 
-# Instalar ÚNICAMENTE dependencias de producción (ahorra cientos de MB)
-# Usamos --legacy-peer-deps para evitar el conflicto de jimp con Baileys v7
-RUN npm jid --omit=dev --legacy-peer-deps
+# Instalar ÚNICAMENTE dependencias de producción
+# Aquí también mantenemos la bandera por seguridad
+RUN npm install --omit=dev --legacy-peer-deps
 
 # Copiar la app compilada desde la etapa anterior
 COPY --from=builder /app/dist ./dist

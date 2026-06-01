@@ -118,9 +118,14 @@ export class WhatsappController {
     schema: {
       type: 'object',
       properties: {
+        code: {
+          type: 'string',
+          example: '591',
+          description: 'Código de país.',
+        },
         phone: {
           type: 'string',
-          example: '59171234567',
+          example: '71234567',
           description: 'Número de destino.',
         },
         caption: {
@@ -181,7 +186,8 @@ export class WhatsappController {
     schema: {
       type: 'object',
       properties: {
-        phone: { type: 'string', example: '59171234567', description: 'Número de destino.' },
+        code: { type: 'string', example: '591', description: 'Código de país.' },
+        phone: { type: 'string', example: '71234567', description: 'Número de destino.' },
         fileName: { type: 'string', example: 'Factura_Mayo.pdf', description: 'Nombre opcional con el que se guardará el archivo.' },
         file: { type: 'string', format: 'binary', description: 'Selecciona el documento a enviar' },
       },

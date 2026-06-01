@@ -14,7 +14,10 @@ export class WhatsappService implements OnModuleInit {
   }
 
   private async conectarWhatsapp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    const folderName = process.env.AUTH_FOLDER_NAME || 'auth_info_baileys';
+
+    const { state, saveCreds } = await useMultiFileAuthState(folderName);
+    // const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
     this.sock = makeWASocket({
       auth: state, // Mantener el estado multifichero de Baileys
@@ -99,28 +102,31 @@ export class WhatsappService implements OnModuleInit {
     let thumbnailBase64: string | undefined;
 
     try {
-      // Leemos el buffer original con Jimp
-      const image: any = await Jimp.read(fileBuffer);
+      // 1. Leemos el buffer original con Jimp v0.16
+      const image = await Jimp.read(fileBuffer);
 
-      // Redimensionamos a un tamaño pequeño de miniatura (ej: ancho 200px, alto automático)
-      image.resize({ w: 200 });
+      // 2. Redimensionamos usando la constante clásica de tu versión para el alto automático
+      // En la v0.16, AUTO está directo en el objeto Jimp o en image.constructor
+      const autoHeight = (Jimp as any).AUTO || -1;
+      image.resize(200, autoHeight);
 
-      // Obtenemos el buffer comprimido en formato JPEG
-      const thumbnailBuffer = await image.getBuffer('image/jpeg');
+      // 3. Obtenemos el buffer usando getBufferAsync que en tu v0.16 pide estrictamente el formato exacto
+      const thumbnailBuffer = await image.getBufferAsync('image/jpeg');
       thumbnailBase64 = thumbnailBuffer.toString('base64');
+
+      console.log('Miniatura generada con éxito usando Jimp v0.16.13');
     } catch (err) {
       console.error('No se pudo generar el thumbnail, se enviará sin previsualización:', err);
     }
 
-    // Enviamos a Baileys
+    // Enviamos a Baileys v7
     return await this.sock.sendMessage(jid, {
       image: fileBuffer,
       mimetype: mimeType,
       caption: caption || undefined,
-      jpegThumbnail: thumbnailBase64, // Si falló Jimp, va undefined y no rompe el flujo principal
+      jpegThumbnail: thumbnailBase64,
     });
   }
-
 
   // ... envio de documentos ...
 
