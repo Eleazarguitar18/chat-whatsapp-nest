@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  whatsapp-bot-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat-whatsapp-nest-app
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      #  PERSISTENCIA DE SESIÓN: Mapea la carpeta de credenciales al disco duro local
+      - ./auth_info_baileys:/app/auth_info_baileys
+    environment:
+      - PORT=3000
+      - TZ=America/La_Paz # Configura la hora de Bolivia para los logs del bot

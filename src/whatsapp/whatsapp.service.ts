@@ -193,10 +193,9 @@ export class WhatsappService implements OnModuleInit {
     try {
       const grupos = await this.sock.groupFetchAllParticipating();
 
-      // 👁️ TRUCO DE INSPECCIÓN: Imprimimos en la consola TODO el objeto crudo con lujo de detalles
-      console.log('====== OBJETO CRUDO DE GRUPOS RECIBIDO DE META ======');
-      console.dir(grupos, { depth: null, colors: true });
-      console.log('=====================================================');
+      // console.log('====== OBJETO CRUDO DE GRUPOS RECIBIDO DE META ======');
+      // console.dir(grupos, { depth: null, colors: true });
+      // console.log('=====================================================');
 
       // Devolvemos el mapeo normal para que no rompa tu Swagger
       return Object.values(grupos).map((grupo: any) => ({
