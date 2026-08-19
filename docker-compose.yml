@@ -3,14 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: whatsapp-nest:latest
     container_name: chat-whatsapp-nest-app
     restart: always
     ports:
-      - "${PORT}:${PORT}" # Usa el puerto del .env
+      - "${PORT}:${PORT}"
     volumes:
-      # Usa el nombre de la carpeta del .env para mapear el volumen
+      # Solo mapeamos las credenciales para NO perder el QR
       - ./${AUTH_FOLDER_NAME}:/app/${AUTH_FOLDER_NAME}
     environment:
       - PORT=${PORT}
-      - NODE_ENV=production # Aquí lo forzamos a producción dentro del contenedor
+      - NODE_ENV=production
       - TZ=${TZ}
+      - AUTH_FOLDER_NAME=${AUTH_FOLDER_NAME}
