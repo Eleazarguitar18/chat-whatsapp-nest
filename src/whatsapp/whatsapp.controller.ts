@@ -368,6 +368,79 @@ export class WhatsappController {
   }
 
   // ... dentro de tu WhatsappController ...
+  @Post('grupo/enviar-documento')
+  @HttpCode(HttpStatus.OK)
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Enviar documento a un grupo de WhatsApp',
+    description: 'Sube un archivo (PDF, DOCX, XLSX, etc.) y lo envía directamente a un grupo de WhatsApp simulando comportamiento humano para evitar baneos.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        groupId: {
+          type: 'string',
+          example: '1203630123456789@g.us',
+          description: 'ID (JID) único del grupo de WhatsApp.',
+        },
+        fileName: {
+          type: 'string',
+          example: 'Comunicado_Oficial.pdf',
+          description: 'Nombre opcional con el que se mostrará el archivo en el chat.',
+        },
+        mimeType: {
+          type: 'string',
+          example: 'application/pdf',
+          description: 'Tipo MIME del archivo (opcional si se detecta de forma automática).',
+        },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Selecciona el documento PDF o archivo a enviar.',
+        },
+      },
+      required: ['groupId', 'file'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'El documento fue procesado y enviado con éxito al grupo.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Faltan parámetros obligatorios o el archivo excede el límite permitido.',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'El cliente de WhatsApp no está conectado.',
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 15 * 1024 * 1024, // Límite de 15 MB para documentos
+      },
+    }),
+  )
+  async enviarDocumentoGrupo(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('groupId') groupId: string,
+    @Body('fileName') fileName?: string,
+    @Body('mimeType') mimeType?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('El archivo documento (file) es obligatorio.');
+    }
+    if (!groupId) {
+      throw new BadRequestException('El ID del grupo (groupId) es obligatorio.');
+    }
 
+    return await this.whatsappService.enviarDocumentoAGrupoDesdeBuffer(
+      groupId,
+      file.buffer,
+      mimeType || file.mimetype,
+      fileName || file.originalname,
+    );
+  }
 
 }

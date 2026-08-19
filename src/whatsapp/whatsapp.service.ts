@@ -328,4 +328,44 @@ export class WhatsappService implements OnModuleInit {
       throw new InternalServerErrorException(`No se pudo obtener la lista de participantes del grupo ${jid}.`);
     }
   }
+
+  /**
+   * Envía un documento (PDF, Word, Excel, etc.) a un grupo de WhatsApp simulando presencia humana.
+   */
+  async enviarDocumentoAGrupoDesdeBuffer(
+    groupId: string,
+    fileBuffer: Buffer,
+    mimeType: string,
+    fileName: string,
+  ) {
+    if (!this.sock) {
+      throw new ServiceUnavailableException('El cliente de WhatsApp no está inicializado.');
+    }
+
+    const cleanGroupId = groupId.trim();
+
+    try {
+      console.log(`🚀 [Anti-Ban] Preparando envío de documento al grupo: ${cleanGroupId}`);
+
+      // 1. Simulación anti-ban: "Escribiendo..." en el grupo de 2 a 4 segundos
+      await this.sock.sendPresenceUpdate('composing', cleanGroupId);
+      await this.delayAleatorio(2000, 4000);
+      await this.sock.sendPresenceUpdate('paused', cleanGroupId);
+
+      // 2. Pequeña pausa adicional antes de liberar el mensaje
+      await this.delayAleatorio(500, 1500);
+
+      // 3. Envío del archivo por protocolo Baileys v7
+      return await this.sock.sendMessage(cleanGroupId, {
+        document: fileBuffer,
+        mimetype: mimeType,
+        fileName: fileName,
+      });
+    } catch (error) {
+      console.error(`❌ Error al enviar documento al grupo ${cleanGroupId}:`, error);
+      throw new InternalServerErrorException(
+        `Error de protocolo Baileys v7: ${error.message}`,
+      );
+    }
+  }
 }
