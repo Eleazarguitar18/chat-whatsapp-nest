@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   HttpCode,
   HttpStatus,
@@ -441,6 +442,69 @@ export class WhatsappController {
       mimeType || file.mimetype,
       fileName || file.originalname,
     );
+  }
+
+  // =========================================================================
+  // 🔄 RUTAS DE GESTIÓN DE SESIÓN Y AUTENTICACIÓN
+  // =========================================================================
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cerrar sesión de WhatsApp',
+    description:
+      'Cierra la sesión activa del cliente de WhatsApp y desvincula el dispositivo de los servidores de WhatsApp.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Sesión cerrada exitosamente.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: {
+          type: 'string',
+          example: 'Sesión de WhatsApp cerrada y desvinculada exitosamente.',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error interno al intentar cerrar la sesión.',
+  })
+  async logout() {
+    return await this.whatsappService.cerrarSesion();
+  }
+
+  @Delete('auth')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Eliminar carpeta de autenticación y reiniciar sesión',
+    description:
+      'Elimina la carpeta de credenciales de Baileys para resolver problemas de corrupción de sesión o cierres erróneos, y reinicia el cliente para generar un nuevo código QR limpio.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Carpeta de autenticación eliminada y servicio reiniciado exitosamente.',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        message: {
+          type: 'string',
+          example:
+            "Carpeta de autenticación 'auth_info_baileys' eliminada con éxito. Se ha reinicializado el servicio para generar un nuevo QR.",
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error interno al intentar eliminar la carpeta de autenticación.',
+  })
+  async deleteAuth() {
+    return await this.whatsappService.borrarCarpetaAuth();
   }
 
 }

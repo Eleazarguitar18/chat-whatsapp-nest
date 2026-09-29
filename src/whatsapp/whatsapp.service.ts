@@ -13,6 +13,8 @@ import makeWASocket, {
 import * as QRCodeNode from 'qrcode';
 import pino = require('pino');
 import { Jimp } from 'jimp';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface ContactoMensaje {
   phone: string;
@@ -365,6 +367,90 @@ export class WhatsappService implements OnModuleInit {
       console.error(`❌ Error al enviar documento al grupo ${cleanGroupId}:`, error);
       throw new InternalServerErrorException(
         `Error de protocolo Baileys v7: ${error.message}`,
+      );
+    }
+  }
+
+  // =========================================================================
+  // 🔄 GESTIÓN DE SESIÓN Y AUTENTICACIÓN
+  // =========================================================================
+
+  /**
+   * Cierra la sesión activa de WhatsApp (desvincula el dispositivo)
+   */
+  async cerrarSesion(): Promise<{ success: boolean; message: string }> {
+    try {
+      if (this.sock) {
+        await this.sock.logout();
+        this.sock = null;
+        this.ultimoQr = null;
+        console.log('🔒 [NestJS] Sesión de WhatsApp cerrada correctamente.');
+        return {
+          success: true,
+          message: 'Sesión de WhatsApp cerrada y desvinculada exitosamente.',
+        };
+      }
+      return {
+        success: true,
+        message: 'No hay ninguna sesión activa de WhatsApp para cerrar.',
+      };
+    } catch (error) {
+      console.error('Error al cerrar la sesión de WhatsApp:', error);
+      if (this.sock) {
+        try {
+          this.sock.end(undefined);
+        } catch (_) {}
+        this.sock = null;
+        this.ultimoQr = null;
+      }
+      throw new InternalServerErrorException(
+        `Error al cerrar la sesión: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Elimina la carpeta de autenticación (credenciales/sesión) y reinicia el cliente.
+   * Útil cuando los archivos de sesión se corrompen o quedan en bucle de reconexión.
+   */
+  async borrarCarpetaAuth(): Promise<{ success: boolean; message: string }> {
+    const folderName = process.env.AUTH_FOLDER_NAME || 'auth_info_baileys';
+    const folderPath = path.resolve(process.cwd(), folderName);
+
+    try {
+      // 1. Cerrar o terminar socket actual para liberar bloqueos de archivos
+      if (this.sock) {
+        try {
+          this.sock.end(undefined);
+        } catch (e) {
+          console.warn('Advertencia al terminar socket previo:', e?.message);
+        }
+        this.sock = null;
+      }
+      this.ultimoQr = null;
+
+      // Breve pausa para asegurar liberación de descriptores de archivos en el sistema operativo
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // 2. Eliminar carpeta de autenticación si existe
+      if (fs.existsSync(folderPath)) {
+        await fs.promises.rm(folderPath, { recursive: true, force: true });
+        console.log(`🗑️ [NestJS] Carpeta de autenticación eliminada: ${folderPath}`);
+      }
+
+      // 3. Reiniciar el cliente WhatsApp para generar un nuevo QR limpio
+      setTimeout(() => {
+        this.conectarWhatsapp();
+      }, 1000);
+
+      return {
+        success: true,
+        message: `Carpeta de autenticación '${folderName}' eliminada con éxito. Se ha reinicializado el servicio para generar un nuevo QR.`,
+      };
+    } catch (error) {
+      console.error('Error al eliminar la carpeta de autenticación:', error);
+      throw new InternalServerErrorException(
+        `No se pudo eliminar la carpeta de autenticación: ${error.message}`,
       );
     }
   }
