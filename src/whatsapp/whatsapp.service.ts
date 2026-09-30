@@ -67,12 +67,11 @@ export class WhatsappService implements OnModuleInit {
           this.ultimoQr = null;
           console.log('🔄 [NestJS] Sesión desvinculada (Logged out). Limpiando credenciales obsoletas y reiniciando...');
           const folderPath = path.resolve(process.cwd(), folderName);
-          if (fs.existsSync(folderPath)) {
-            try {
-              fs.rmSync(folderPath, { recursive: true, force: true });
-            } catch (_) {}
-          }
-          setTimeout(() => this.conectarWhatsapp(), 3000);
+          setTimeout(async () => {
+            await this.desmantelarSocket();
+            await this.limpiarDirectorioSeguro(folderPath);
+            this.conectarWhatsapp();
+          }, 2000);
         }
       }
 
@@ -384,6 +383,93 @@ export class WhatsappService implements OnModuleInit {
   // =========================================================================
 
   /**
+   * Cierra de forma segura el socket activo y elimina listeners
+   */
+  private async desmantelarSocket(): Promise<void> {
+    if (!this.sock) return;
+
+    try {
+      // 1. Quitar todos los event listeners para que no sigan escribiendo creds.json
+      if (this.sock.ev) {
+        try {
+          (this.sock.ev as any).removeAllListeners?.('creds.update');
+          (this.sock.ev as any).removeAllListeners?.('connection.update');
+        } catch (_) {}
+      }
+
+      // 2. Cerrar el websocket subyacente si existe
+      if ((this.sock as any).ws) {
+        try {
+          (this.sock as any).ws.close();
+        } catch (_) {}
+      }
+
+      // 3. Terminar el socket de Baileys
+      try {
+        this.sock.end(undefined);
+      } catch (_) {}
+    } catch (err) {
+      console.warn('⚠️ [NestJS] Advertencia al desmantelar socket:', err?.message);
+    } finally {
+      this.sock = null;
+      this.ultimoQr = null;
+    }
+  }
+
+  /**
+   * Elimina de forma segura los archivos y la carpeta de autenticación evitando errores EBUSY / bloqueos de archivos.
+   */
+  private async limpiarDirectorioSeguro(dirPath: string): Promise<void> {
+    if (!fs.existsSync(dirPath)) return;
+
+    // Intentar hasta 5 veces con pausas progresivas
+    for (let intento = 1; intento <= 5; intento++) {
+      try {
+        // 1. Primero intentar vaciar todos los archivos internos uno por uno
+        const archivos = await fs.promises.readdir(dirPath);
+        for (const archivo of archivos) {
+          const archivoPath = path.join(dirPath, archivo);
+          try {
+            const stat = await fs.promises.lstat(archivoPath);
+            if (stat.isDirectory()) {
+              await fs.promises.rm(archivoPath, { recursive: true, force: true }).catch(() => {});
+            } else {
+              await fs.promises.unlink(archivoPath).catch(() => {});
+            }
+          } catch (_) {}
+        }
+
+        // 2. Intentar eliminar la carpeta raíz
+        await fs.promises.rm(dirPath, { recursive: true, force: true });
+        console.log(`🗑️ [NestJS] Directorio ${dirPath} eliminado con éxito.`);
+        return;
+      } catch (err) {
+        console.warn(
+          `⚠️ [NestJS] Intento ${intento}/5 para limpiar ${dirPath} (${err.code || err.message}). Esperando para reintentar...`,
+        );
+        // Pausa progresiva para dar tiempo al SO/Docker de liberar descriptores
+        await new Promise((resolve) => setTimeout(resolve, intento * 500));
+      }
+    }
+
+    // Si la carpeta raíz aún persiste por EBUSY pero los archivos adentro ya se borraron:
+    try {
+      const restantes = await fs.promises.readdir(dirPath);
+      if (restantes.length === 0) {
+        console.log(`ℹ️ [NestJS] La carpeta '${dirPath}' quedó vacía (suficiente para iniciar sesión limpia).`);
+        return;
+      }
+    } catch (_) {}
+
+    // Si aún quedan archivos, intentar forzar borrado síncrono
+    try {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    } catch (finalError) {
+      console.warn(`⚠️ [NestJS] No se pudo remover la carpeta contenedora: ${finalError.message}, pero el contenido fue vaciado.`);
+    }
+  }
+
+  /**
    * Cierra la sesión activa de WhatsApp (desvincula el dispositivo)
    * y limpia los datos de autenticación para generar un nuevo QR limpio.
    */
@@ -395,47 +481,32 @@ export class WhatsappService implements OnModuleInit {
     try {
       if (this.sock) {
         try {
-          // Intentar logout en los servidores de WhatsApp con timeout de 5 segundos
+          // Intentar logout en los servidores de WhatsApp con timeout de 4 segundos
           await Promise.race([
-            this.sock.logout(),
+            this.sock.logout('Sesión cerrada por el usuario'),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Timeout en logout')), 5000),
+              setTimeout(() => reject(new Error('Timeout en logout')), 4000),
             ),
           ]);
           console.log('✅ [NestJS] Logout enviado correctamente a WhatsApp.');
         } catch (err) {
-          console.warn('⚠️ [NestJS] Advertencia al cerrar socket:', err?.message);
+          console.warn('⚠️ [NestJS] Advertencia al cerrar socket remotamente:', err?.message);
         }
-
-        try {
-          this.sock.end(undefined);
-        } catch (_) {}
-        this.sock = null;
       }
-      this.ultimoQr = null;
+
+      // Desmantelar socket localmente y remover listeners
+      await this.desmantelarSocket();
 
       // Pausa para asegurar liberación de descriptores de archivos
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Limpiar credenciales para permitir nuevo inicio de sesión
-      if (fs.existsSync(folderPath)) {
-        try {
-          await fs.promises.rm(folderPath, {
-            recursive: true,
-            force: true,
-            maxRetries: 3,
-            retryDelay: 500,
-          });
-        } catch (e) {
-          fs.rmSync(folderPath, { recursive: true, force: true });
-        }
-        console.log(`🗑️ [NestJS] Credenciales eliminadas tras logout: ${folderPath}`);
-      }
+      // Limpiar credenciales de forma segura
+      await this.limpiarDirectorioSeguro(folderPath);
 
       // Reiniciar conexión para generar de inmediato un nuevo código QR
       setTimeout(() => {
         this.conectarWhatsapp();
-      }, 1000);
+      }, 1500);
 
       return {
         success: true,
@@ -460,39 +531,19 @@ export class WhatsappService implements OnModuleInit {
     const folderPath = path.resolve(process.cwd(), folderName);
 
     try {
-      // 1. Cerrar o terminar socket actual para liberar bloqueos de archivos
-      if (this.sock) {
-        try {
-          this.sock.end(undefined);
-        } catch (e) {
-          console.warn('Advertencia al terminar socket previo:', e?.message);
-        }
-        this.sock = null;
-      }
-      this.ultimoQr = null;
+      // 1. Desmantelar socket actual y remover listeners
+      await this.desmantelarSocket();
 
-      // Breve pausa para asegurar liberación de descriptores de archivos en el sistema operativo
+      // 2. Pausa breve
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // 2. Eliminar carpeta de autenticación si existe
-      if (fs.existsSync(folderPath)) {
-        try {
-          await fs.promises.rm(folderPath, {
-            recursive: true,
-            force: true,
-            maxRetries: 3,
-            retryDelay: 500,
-          });
-        } catch (e) {
-          fs.rmSync(folderPath, { recursive: true, force: true });
-        }
-        console.log(`🗑️ [NestJS] Carpeta de autenticación eliminada: ${folderPath}`);
-      }
+      // 3. Eliminar carpeta o su contenido de forma segura sin fallar por EBUSY
+      await this.limpiarDirectorioSeguro(folderPath);
 
-      // 3. Reiniciar el cliente WhatsApp para generar un nuevo QR limpio
+      // 4. Reiniciar el cliente WhatsApp para generar un nuevo QR limpio
       setTimeout(() => {
         this.conectarWhatsapp();
-      }, 1000);
+      }, 1500);
 
       return {
         success: true,
