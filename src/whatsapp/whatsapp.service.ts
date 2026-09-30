@@ -65,6 +65,14 @@ export class WhatsappService implements OnModuleInit {
           setTimeout(() => this.conectarWhatsapp(), 5000);
         } else {
           this.ultimoQr = null;
+          console.log('🔄 [NestJS] Sesión desvinculada (Logged out). Limpiando credenciales obsoletas y reiniciando...');
+          const folderPath = path.resolve(process.cwd(), folderName);
+          if (fs.existsSync(folderPath)) {
+            try {
+              fs.rmSync(folderPath, { recursive: true, force: true });
+            } catch (_) {}
+          }
+          setTimeout(() => this.conectarWhatsapp(), 3000);
         }
       }
 
@@ -377,32 +385,65 @@ export class WhatsappService implements OnModuleInit {
 
   /**
    * Cierra la sesión activa de WhatsApp (desvincula el dispositivo)
+   * y limpia los datos de autenticación para generar un nuevo QR limpio.
    */
   async cerrarSesion(): Promise<{ success: boolean; message: string }> {
+    console.log('🔄 [NestJS] Iniciando proceso de cierre de sesión / logout...');
+    const folderName = process.env.AUTH_FOLDER_NAME || 'auth_info_baileys';
+    const folderPath = path.resolve(process.cwd(), folderName);
+
     try {
       if (this.sock) {
-        await this.sock.logout();
-        this.sock = null;
-        this.ultimoQr = null;
-        console.log('🔒 [NestJS] Sesión de WhatsApp cerrada correctamente.');
-        return {
-          success: true,
-          message: 'Sesión de WhatsApp cerrada y desvinculada exitosamente.',
-        };
-      }
-      return {
-        success: true,
-        message: 'No hay ninguna sesión activa de WhatsApp para cerrar.',
-      };
-    } catch (error) {
-      console.error('Error al cerrar la sesión de WhatsApp:', error);
-      if (this.sock) {
+        try {
+          // Intentar logout en los servidores de WhatsApp con timeout de 5 segundos
+          await Promise.race([
+            this.sock.logout(),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Timeout en logout')), 5000),
+            ),
+          ]);
+          console.log('✅ [NestJS] Logout enviado correctamente a WhatsApp.');
+        } catch (err) {
+          console.warn('⚠️ [NestJS] Advertencia al cerrar socket:', err?.message);
+        }
+
         try {
           this.sock.end(undefined);
         } catch (_) {}
         this.sock = null;
-        this.ultimoQr = null;
       }
+      this.ultimoQr = null;
+
+      // Pausa para asegurar liberación de descriptores de archivos
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Limpiar credenciales para permitir nuevo inicio de sesión
+      if (fs.existsSync(folderPath)) {
+        try {
+          await fs.promises.rm(folderPath, {
+            recursive: true,
+            force: true,
+            maxRetries: 3,
+            retryDelay: 500,
+          });
+        } catch (e) {
+          fs.rmSync(folderPath, { recursive: true, force: true });
+        }
+        console.log(`🗑️ [NestJS] Credenciales eliminadas tras logout: ${folderPath}`);
+      }
+
+      // Reiniciar conexión para generar de inmediato un nuevo código QR
+      setTimeout(() => {
+        this.conectarWhatsapp();
+      }, 1000);
+
+      return {
+        success: true,
+        message:
+          'Sesión de WhatsApp cerrada y credenciales limpiadas exitosamente. Se ha reinicializado el servicio para generar un nuevo código QR.',
+      };
+    } catch (error) {
+      console.error('❌ Error al cerrar la sesión de WhatsApp:', error);
       throw new InternalServerErrorException(
         `Error al cerrar la sesión: ${error.message}`,
       );
@@ -414,6 +455,7 @@ export class WhatsappService implements OnModuleInit {
    * Útil cuando los archivos de sesión se corrompen o quedan en bucle de reconexión.
    */
   async borrarCarpetaAuth(): Promise<{ success: boolean; message: string }> {
+    console.log('🗑️ [NestJS] Solicitud de borrado forzado de carpeta auth recibida...');
     const folderName = process.env.AUTH_FOLDER_NAME || 'auth_info_baileys';
     const folderPath = path.resolve(process.cwd(), folderName);
 
@@ -434,7 +476,16 @@ export class WhatsappService implements OnModuleInit {
 
       // 2. Eliminar carpeta de autenticación si existe
       if (fs.existsSync(folderPath)) {
-        await fs.promises.rm(folderPath, { recursive: true, force: true });
+        try {
+          await fs.promises.rm(folderPath, {
+            recursive: true,
+            force: true,
+            maxRetries: 3,
+            retryDelay: 500,
+          });
+        } catch (e) {
+          fs.rmSync(folderPath, { recursive: true, force: true });
+        }
         console.log(`🗑️ [NestJS] Carpeta de autenticación eliminada: ${folderPath}`);
       }
 
@@ -448,7 +499,7 @@ export class WhatsappService implements OnModuleInit {
         message: `Carpeta de autenticación '${folderName}' eliminada con éxito. Se ha reinicializado el servicio para generar un nuevo QR.`,
       };
     } catch (error) {
-      console.error('Error al eliminar la carpeta de autenticación:', error);
+      console.error('❌ Error al eliminar la carpeta de autenticación:', error);
       throw new InternalServerErrorException(
         `No se pudo eliminar la carpeta de autenticación: ${error.message}`,
       );

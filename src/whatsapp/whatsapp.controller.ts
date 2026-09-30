@@ -507,4 +507,19 @@ export class WhatsappController {
     return await this.whatsappService.borrarCarpetaAuth();
   }
 
+  @Post('auth/reset')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reiniciar sesión y eliminar credenciales (Alias POST)',
+    description:
+      'Método POST alternativo para eliminar la carpeta de autenticación y regenerar un nuevo código QR.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Carpeta de autenticación eliminada y servicio reiniciado exitosamente.',
+  })
+  async resetAuth() {
+    return await this.whatsappService.borrarCarpetaAuth();
+  }
+
 }

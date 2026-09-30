@@ -21,8 +21,7 @@ async function bootstrap() {
     .setTitle('WhatsApp API Gateway')
     .setDescription('Servicio modularizado para el envío de notificaciones y gestión de estados de WhatsApp')
     .setVersion('1.0')
-    .addTag('WhatsApp Core', 'Gestión de conexión y código QR')
-    .addTag('Messages', 'Operaciones de envío de mensajería del sistema')
+    .addTag('WhatsApp Gateway', 'Gestión de conexión, sesiones, código QR y mensajería')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
