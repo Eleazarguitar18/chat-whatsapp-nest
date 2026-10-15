@@ -9,10 +9,6 @@ services:
     ports:
       - "${PORT}:${PORT}"
     volumes:
-      # Solo mapeamos las credenciales para NO perder el QR
       - ./${AUTH_FOLDER_NAME}:/app/${AUTH_FOLDER_NAME}
-    environment:
-      - PORT=${PORT}
-      - NODE_ENV=production
-      - TZ=${TZ}
-      - AUTH_FOLDER_NAME=${AUTH_FOLDER_NAME}
+    env_file:
+      - .env
