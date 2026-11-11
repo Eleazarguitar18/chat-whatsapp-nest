@@ -69,21 +69,62 @@ export class WhatsappController {
   })
   async renderQrPage() {
     const qrImage = await this.whatsappService.obtenerQrHtml();
+    const sesion = this.whatsappService.obtenerSesionActual();
 
     if (!qrImage) {
       return {
         success: true,
-        message:
-          'WhatsApp ya está vinculado o el código se está generando de fondo...',
+        connected: sesion.conectado,
+        numero: sesion.numero,
+        nombre: sesion.nombre,
+        message: sesion.conectado
+          ? 'WhatsApp ya está vinculado y el servicio está activo.'
+          : 'WhatsApp no está vinculado o el código se está generando de fondo...',
       };
     }
 
     // Si quieres retornar un JSON limpio en lugar de HTML embebido (Ideal para tu Frontend)
     return {
       success: true,
+      connected: false,
       qrBase64: qrImage,
     };
   }
+
+  // 1.1 GET http://localhost:3000/api/whatsapp/session (Estado de sesión + número vinculado)
+  @Get('session')
+  @ApiOperation({
+    summary: 'Obtener estado de la sesión',
+    description:
+      'Devuelve si WhatsApp está vinculado, junto con el número y el nombre del dispositivo conectado.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estado actual de la sesión.',
+    schema: {
+      example: {
+        success: true,
+        connected: true,
+        numero: '59171234567',
+        nombre: 'SIGHO',
+        message: 'WhatsApp vinculado y activo.',
+      },
+    },
+  })
+  obtenerSesion() {
+    const sesion = this.whatsappService.obtenerSesionActual();
+
+    return {
+      success: true,
+      connected: sesion.conectado,
+      numero: sesion.numero,
+      nombre: sesion.nombre,
+      message: sesion.conectado
+        ? 'WhatsApp vinculado y activo.'
+        : 'WhatsApp no está vinculado en este momento.',
+    };
+  }
+
 
   @Post('send')
   @HttpCode(HttpStatus.OK) // Cambia el default de POST (201) a 200 OK de forma nativa

@@ -25,6 +25,7 @@ export interface ContactoMensaje {
 export class WhatsappService implements OnModuleInit {
   private sock: WASocket | null = null;
   private ultimoQr: string | null = null;
+  private estaConectado = false;
 
   // Se ejecuta automáticamente al arrancar la aplicación de NestJS
   async onModuleInit() {
@@ -59,6 +60,7 @@ export class WhatsappService implements OnModuleInit {
         const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
+        this.estaConectado = false;
         console.log(`❌ Conexión cerrada (Status: ${statusCode}). ¿Reconectando?: ${shouldReconnect}`);
 
         if (shouldReconnect) {
@@ -77,6 +79,7 @@ export class WhatsappService implements OnModuleInit {
 
       if (connection === 'open') {
         this.ultimoQr = null;
+        this.estaConectado = true;
         console.log('✅ [NestJS] ¡Conexión con WhatsApp establecida con éxito!');
       }
     });
@@ -138,6 +141,34 @@ export class WhatsappService implements OnModuleInit {
   async obtenerQrHtml(): Promise<string | null> {
     if (!this.ultimoQr) return null;
     return await QRCodeNode.toDataURL(this.ultimoQr);
+  }
+
+  /**
+   * Devuelve el estado real de la sesión y los datos del número vinculado.
+   * El número se obtiene de las credenciales de Baileys (`sock.user`),
+   * cuyo id tiene el formato "59171234567:12@s.whatsapp.net".
+   */
+  obtenerSesionActual(): {
+    conectado: boolean;
+    numero: string | null;
+    nombre: string | null;
+  } {
+    const user = this.sock?.user;
+
+    if (!this.estaConectado || !user?.id) {
+      return { conectado: false, numero: null, nombre: null };
+    }
+
+    return {
+      conectado: true,
+      numero: this.extraerNumero(user.id),
+      nombre: user.name && user.name !== '~' ? user.name : null,
+    };
+  }
+
+  private extraerNumero(jid: string): string | null {
+    const numero = jid.split('@')[0].split(':')[0].replace(/\D/g, '');
+    return numero.length > 0 ? numero : null;
   }
 
   async enviarMensajeTexto(phone: string, message: string) {
@@ -413,6 +444,7 @@ export class WhatsappService implements OnModuleInit {
     } finally {
       this.sock = null;
       this.ultimoQr = null;
+      this.estaConectado = false;
     }
   }
 
