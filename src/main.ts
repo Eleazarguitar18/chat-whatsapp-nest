@@ -62,6 +62,7 @@ async function bootstrap() {
     .setDescription('Servicio modularizado para el envío de notificaciones y gestión de estados de WhatsApp')
     .setVersion('1.0')
     .addTag('WhatsApp Gateway', 'Gestión de conexión, sesiones, código QR y mensajería')
+    .addTag('GitLab Webhooks', 'Recibe eventos de GitLab y notifica por WhatsApp')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
