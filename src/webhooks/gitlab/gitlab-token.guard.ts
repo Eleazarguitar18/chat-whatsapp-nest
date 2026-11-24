@@ -28,7 +28,7 @@ export class GitLabTokenGuard implements CanActivate {
     if (!secret) {
       if (!this.advertenciaEmitida) {
         this.logger.warn(
-          'GITLAB_WEBHOOK_SECRET no está configurado: POST /api/webhooks/gitlab aceptará peticiones sin verificación de token.',
+          'GITLAB_WEBHOOK_SECRET no está configurado: los endpoints /api/webhooks/gitlab* aceptarán peticiones sin verificación de token.',
         );
         this.advertenciaEmitida = true;
       }

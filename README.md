@@ -123,6 +123,44 @@ curl -X POST http://localhost:3000/api/webhooks/gitlab \
 
 La respuesta siempre es `200` con `{ "recibido": true, "notificado": true|false, ... }`. Si Baileys está desconectado o falta `GITLAB_NOTIFY_TO`, el error se registra con el `Logger` de Nest y `notificado` es `false`, sin derribar la aplicación.
 
+## 🛠️ System Hooks de GitLab -> WhatsApp
+
+Endpoint independiente para eventos a nivel de instancia/sistema. **No modifica** el Push Hook de `/api/webhooks/gitlab`.
+
+- **Ruta completa:** `POST http://172.16.0.105:3000/api/webhooks/gitlab-system`
+- **Configuración en GitLab:** *Admin Area → System hooks* → URL de arriba, misma *Secret token* que `GITLAB_WEBHOOK_SECRET` y marcar los eventos deseados (Project events, User events, Group events).
+- **Seguridad:** mismo guard `x-gitlab-token` con `timingSafeEqual`; token inválido → `401`.
+
+Eventos notificados:
+
+| `event_name` | Mensaje |
+| --- | --- |
+| `project_create` (o `object_kind=project` sin `event_name`) | 📦 *Nuevo proyecto en GitLab* |
+| `project_destroy` | 🗑️ *Proyecto eliminado en GitLab* |
+| `user_create` | 👤 *Nuevo usuario en GitLab* |
+| `group_create` | 👥 *Nuevo grupo en GitLab* |
+| Otros | se registra en `Logger` y se responde `200` con `notificado: false` |
+
+Variable opcional: `GITLAB_SYSTEM_NOTIFY_TO` (si no existe, usa `GITLAB_NOTIFY_TO`). Ver `.env.example`.
+
+Ejemplo local:
+
+```bash
+curl -X POST http://172.16.0.105:3000/api/webhooks/gitlab-system \
+  -H 'Content-Type: application/json' \
+  -H 'x-gitlab-token: cambia-este-token-secreto' \
+  -d '{
+    "event_name": "project_create",
+    "object_kind": "project",
+    "name": "mi-proyecto",
+    "path_with_namespace": "mi-grupo/mi-proyecto",
+    "full_path": "mi-grupo/mi-proyecto",
+    "owner_name": "Juan Perez"
+  }'
+```
+
+La respuesta es `200` con `{ "recibido": true, "notificado": true|false, "evento": "...", "eventoGitLab": "..." }`. Si Baileys falla, se loguea y `notificado` es `false` sin caer la API.
+
 ## 📜 Licencia
 
 Desarrollado bajo los estándares de ingeniería de software para uso libre y comercial. Construido por **eledev**. 💻🔥
